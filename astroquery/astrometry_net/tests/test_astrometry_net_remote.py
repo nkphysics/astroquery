@@ -16,15 +16,8 @@ from astropy.io import fits
 from astropy.wcs import WCS
 
 from .. import conf, AstrometryNet
-from ..core import _HAVE_SOURCE_DETECTION
 from ...exceptions import TimeoutError
 
-try:
-    import scipy  # noqa
-except ImportError:
-    HAVE_SCIPY = False
-else:
-    HAVE_SCIPY = True
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 
@@ -107,7 +100,6 @@ def test_solve_image_upload():
     # The test image only solves if it is not downsampled
 
     result = a.solve_from_image(image,
-                                force_image_upload=True,
                                 downsample_factor=1,
                                 crpix_center=True)
     expected_result = fits.getheader(os.path.join(DATA_DIR,
@@ -134,7 +126,6 @@ def test_solve_image_upload_expected_failure():
     image = os.path.join(DATA_DIR, 'thumbnail-image.fit.gz')
     # The test image only solves if it is not downsampled
     result = a.solve_from_image(image,
-                                force_image_upload=True,
                                 downsample_factor=4)
 
     assert not result
@@ -142,10 +133,6 @@ def test_solve_image_upload_expected_failure():
 
 @pytest.mark.filterwarnings("ignore:The WCS transformation has more axes:astropy.wcs.wcs.FITSFixedWarning")
 @pytest.mark.skipif(not api_key, reason='API key not set.')
-@pytest.mark.skipif(not _HAVE_SOURCE_DETECTION,
-                    reason='photutils not installed')
-@pytest.mark.skipif(not HAVE_SCIPY,
-                    reason='no scipy, which photutils needs')
 @pytest.mark.remote_data
 def test_solve_image_detect_source_local():
     # Test that solving by uploading an image works
@@ -155,20 +142,14 @@ def test_solve_image_detect_source_local():
 
     image_width = 256
     image_height = 256
-    # The source detection parameters below (fwhm, detect_threshold)
-    # are specific to this test image. They should not be construed
-    # as a general recommendation.
+    # The test image only solves if it is not downsampled
     result = a.solve_from_image(image,
-                                force_image_upload=False,
                                 downsample_factor=1,
-                                fwhm=1.5, detect_threshold=5,
+                                fwhm=1.5, detect_threshold=5,  # These params are now ignored
                                 center_ra=135.618, center_dec=49.786,
                                 radius=0.5, crpix_center=True)
 
-    # Use the result from the image solve for this test. The two WCS solutions really should be
-    # nearly identical in thesee two cases. Note that the closeness of the match is affected by the
-    # very low resolution of these images (256 x 256 pixels). That low resolution was
-    # chosen to keep the test data small.
+    # Use the result from the image solve for this test
     expected_result = fits.getheader(os.path.join(DATA_DIR,
                                                   'wcs-sol-from-thumbnail-image-index-5200.fit'))
 
@@ -183,11 +164,7 @@ def test_solve_image_detect_source_local():
 
     separations = _calculate_wcs_separation_at_points([wcs_r, wcs_e], center, extent)
 
-    # The tolerance is higher here than in the other tests because of the
-    # low resolution of the test image. It leads to a difference in calculated
-    # coordinates of up to 2 arcsec across the whole image. The likely reason
-    # is that the source detection method is different locally than on
-    # astrometry.net.
+    # Tolerance accounts for potential differences in astrometry.net's internal processing
     assert (separations.arcsec).max() < 2.2
 
     # The headers should also be about the same in this case.

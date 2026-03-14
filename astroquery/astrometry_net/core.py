@@ -7,7 +7,6 @@ import warnings
 from astropy.io import fits
 from astropy.stats import sigma_clipped_stats
 from astropy.coordinates import SkyCoord
-from astropy.utils.decorators import AstropyDeprecationWarning, deprecated_renamed_argument
 
 try:
     from astropy.nddata import CCDData
@@ -15,13 +14,6 @@ except ImportError:
     _HAVE_CCDDATA = False
 else:
     _HAVE_CCDDATA = True
-
-try:
-    from photutils.detection import DAOStarFinder
-except ImportError:
-    _HAVE_SOURCE_DETECTION = False
-else:
-    _HAVE_SOURCE_DETECTION = True
 
 from ..query import BaseQuery
 from ..utils import async_to_sync, url_helpers
@@ -83,8 +75,6 @@ class AstrometryNetClass(BaseQuery):
         'parity': {'default': None, 'type': int, 'allowed': (0, 2)},
         'positional_error': {'default': None, 'type': float, 'allowed': (0,)},
     }
-
-    _no_source_detector = not _HAVE_SOURCE_DETECTION
 
     @property
     def api_key(self):
@@ -340,21 +330,15 @@ class AstrometryNetClass(BaseQuery):
                                        verbose=verbose,
                                        return_submission_id=return_submission_id)
 
-    @deprecated_renamed_argument(("force_image_upload", "ra_dec_units"), (None, None), since="0.4.8")
-    def solve_from_image(self, image_file_path, *, force_image_upload=False,
-                         ra_key=None, dec_key=None,
-                         ra_dec_units=None,
-                         fwhm=3, detect_threshold=5,
-                         solve_timeout=TIMEOUT,
-                         verbose=True,
-                         return_submission_id=False,
-                         get_query_payload=False,
-                         **settings):
+    def solve_from_image(self, image_file_path, *,
+                          fwhm=3, detect_threshold=5,
+                          solve_timeout=TIMEOUT,
+                          verbose=True,
+                          return_submission_id=False,
+                          get_query_payload=False,
+                          **settings):
         """
-        Plate solve from an image, either by uploading the image to
-        astrometry.net or by finding sources locally using
-        `photutils <https://photutils.readthedocs.io/en/stable/>`_ and solving with source
-        locations.
+        Plate solve from an image by uploading the image to astrometry.net.
 
         Parameters
         ----------
@@ -362,28 +346,13 @@ class AstrometryNetClass(BaseQuery):
         image_file_path : str or Path object
             Path to the image.
 
-        force_image_upload : bool, optional
-            If ``True``, upload the image to astrometry.net even if it is
-            possible to detect sources in the image locally. This option will
-            almost always take longer than finding sources locally. It will even
-            take longer than installing photutils and then rerunning this.
+        fwhm : float, optional
+            Full width at half maximum of sources in the image (used only for
+            backwards compatibility, ignored in current implementation).
 
-            Even if this is ``False`` the image will be upload unless
-            photutils is installed.
-
-        ra_key : str, optional
-            Name of the key in the FITS header that contains right ascension of the image.
-            The ra can be specified using the ``center_ra`` setting instead if
-            desired.
-
-        dec_key : str, optional
-            Name of the key in the FITS header that contains declination of the image.
-            The dec can be specified using the ``center_dec`` setting instead if
-            desired.
-
-        ra_dec_units : tuple, optional
-            Tuple specifying the units of the right ascension and declination in
-            the header. The default value is ``('hour', 'degree')``.
+        detect_threshold : float, optional
+            Detection threshold in sigma above background (used only for
+            backwards compatibility, ignored in current implementation).
 
         solve_timeout : int
             Time, in seconds, to wait for the astrometry.net solver to find
@@ -401,83 +370,20 @@ class AstrometryNetClass(BaseQuery):
         For a list of the remaining settings, use the method
         `~AstrometryNetClass.show_allowed_settings`.
         """
-        if ra_key and dec_key:
-            with fits.open(image_file_path) as f:
-                hdr = f[0].header
-                # The error here if one of these fails should be pretty clear
-                ra = hdr[ra_key]
-                dec = hdr[dec_key]
-                # Convert these to degrees in appropriate range
-                center = SkyCoord(ra, dec, unit=('hour', 'degree'))
-                settings['center_ra'] = center.ra.degree
-                settings['center_dec'] = center.dec.degree
-
         settings = {k: v for k, v in settings.items() if v is not None}
         self._validate_settings(settings)
 
-        if force_image_upload or self._no_source_detector:
-            if self._session_id is None:
-                self._login()
-            settings['session'] = self._session_id
-            payload = self._construct_payload(settings)
-            if get_query_payload:
-                return payload
-            url = url_helpers.join(self.API_URL, 'upload')
-            with open(image_file_path, 'rb') as f:
-                response = self._request('POST', url, data=payload,
-                                         cache=False,
-                                         files={'file': f})
-        else:
-            warning_msg = (
-                "Removing photutils functionality to obtain extracted positions list from "
-                "AstrometryNetClass.solve_from_source_list. Users will need to "
-                "submit pre-extracted catalog positions or a fits file for https://nova.astrometry.net/ "
-                "to extract with their algorithm."
-            )
-
-            warnings.warn(warning_msg, category=AstropyDeprecationWarning)
-            # Detect sources and delegate to solve_from_source_list
-            if _HAVE_CCDDATA:
-                # CCDData requires a unit, so provide one. It has absolutely
-                # no impact on source detection. The reader for CCDData
-                # tries to find the first ImageHDU in a FITS file, so it
-                # is the preferred way to get the data.
-                ccd = CCDData.read(image_file_path, unit='adu')
-                data = ccd.data
-            else:
-                with fits.open(image_file_path) as f:
-                    data = f[0].data
-            if verbose:
-                print("Determining background stats", flush=True)
-            mean, median, std = sigma_clipped_stats(data, sigma=3.0,
-                                                    maxiters=5)
-            daofind = DAOStarFinder(fwhm=fwhm,
-                                    threshold=detect_threshold * std)
-            if verbose:
-                print("Finding sources", flush=True)
-            sources = daofind(data - median)
-            if verbose:
-                print('Found {} sources'.format(len(sources)), flush=True)
-            # astrometry.net wants a sorted list of sources
-            # Sort first (which puts things in ascending order)
-            sources.sort('flux')
-            # Reverse to get descending order
-            sources.reverse()
-            if verbose:
-                print(sources)
-
-            # It turns out astrometry.net is 1-indexed, so add 1 to the source positions.
-            sources['xcentroid'] += 1
-            sources['ycentroid'] += 1
-            return self.solve_from_source_list(sources['xcentroid'],
-                                               sources['ycentroid'],
-                                               ccd.header['naxis1'],
-                                               ccd.header['naxis2'],
-                                               solve_timeout=solve_timeout,
-                                               verbose=verbose,
-                                               return_submission_id=return_submission_id,
-                                               get_query_payload=get_query_payload,
-                                               **settings)
+        if self._session_id is None:
+            self._login()
+        settings['session'] = self._session_id
+        payload = self._construct_payload(settings)
+        if get_query_payload:
+            return payload
+        url = url_helpers.join(self.API_URL, 'upload')
+        with open(image_file_path, 'rb') as f:
+            response = self._request('POST', url, data=payload,
+                                     cache=False,
+                                     files={'file': f})
         if response.status_code != 200:
             raise RuntimeError('Post of job failed')
         response_d = response.json()
