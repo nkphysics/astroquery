@@ -138,78 +138,37 @@ dictionary is returned instead. For more details, see
 Solving from an image
 =====================
 
-There are two ways to get a solution from an image:
+The method :meth:`~astroquery.astrometry_net.AstrometryNetClass.solve_from_image`
+uploads the entire image file to the `astrometry.net`_ server. The remote service
+then detects sources automatically and attempts to compute an astrometric (plate)
+solution.
 
-1. Detect sources in the image and upload the source list to get the plate solution.
-2. Upload the image entire image. `astrometry.net`_ will detect sources and attempt to determine a solution.
+.. important::
 
-In both cases, use
-`astroquery.astrometry_net.AstrometryNetClass.solve_from_image`.
-
-There are a few settings common to both cases that make it convenient
-to use pointing information from the FITS header of the image:
-
-``ra_key``
-    Name of the key in the FITS header that contains the RA.
-``dec_key``
-    Name of the key in the FITS header that contains the RA.
-``ra_dec_units``
-    Tuple specifying the units of the right ascension and declination in
-    the header. The default value is ``('hour', 'degree')``.
-
-Detect sources and upload source list
--------------------------------------
-
-To use this method you must have the package `photutils`_ installed.
-
-.. code-block:: python
-
-    from astroquery.astrometry_net import AstrometryNet
-
-    ast = AstrometryNet()
-    ast.api_key = 'XXXXXXXXXXXXXXXX'
-
-    wcs_header = ast.solve_from_image('/path/to/image.fit')
-
-There are a few settings specific to this case:
-
-``FWHM``
-    The rough full-width half-max of stars in the image, in pixels.
-``detect_threshold``
-    The number of standard deviations above background a source needs
-    to be to count as a detection.
-
-For more options see :ref:`common_settings`.
-
-If `astrometry.net`_ is able to find a solution it is returned as an
-`astropy.io.fits.Header`. If it is unable to find a solution an empty
-dictionary is returned instead. For more details, see
-:ref:`handling_results`.
-
-Upload image
-------------
-
-Keep in mind that uploading an image requires transferring roughly 10,000 times
-the data as uploading a source list. It would almost certainly take less time to
-find the sources in your image locally and upload that source list than it would
-to upload the image.
-
-The image will be uploaded under two circumstances. You call
-`~astroquery.astrometry_net.AstrometryNetClass.solve_from_image` and either
-
-+ do not have `photutils`_ installed, or
-+ set ``force_image_upload=True``.
+    Uploading a full image transfers roughly **10,000 times more data** than
+    uploading a pre-detected source list. In nearly all cases it is faster to
+    detect sources locally yourself and then call
+    :meth:`~astroquery.astrometry_net.AstrometryNetClass.solve_from_source_list`
+    instead.
 
 For example:
 
 .. code-block:: python
 
     from astroquery.astrometry_net import AstrometryNet
-
     ast = AstrometryNet()
     ast.api_key = 'XXXXXXXXXXXXXXXX'
+    wcs_header = ast.solve_from_image('/path/to/image.fit')
 
-    wcs_header = ast.solve_from_image('/path/to/image.fit', force_image_upload=True)
+.. note::
+
+    As of astroquery 0.4.8+ the previous option to automatically detect sources
+    locally using `photutils` (when ``force_image_upload=False``) has been deprecated,
+    and as of astroquery 0.4.12+, is entirely removed. The parameters ``fwhm`` and
+    ``detect_threshold`` are retained for backwards compatibility only and are
+    ignored in the current implementation. If you need to solve from a source list,
+    detect sources yourself (e.g. with `photutils` or another package) and use
+    :meth:`~astroquery.astrometry_net.AstrometryNetClass.solve_from_source_list`.
 
 If `astrometry.net`_ is able to find a solution it is returned as an
 `astropy.io.fits.Header`. If it is unable to find a solution an empty
