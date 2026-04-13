@@ -32,7 +32,8 @@ class IbeClass(BaseQuery):
 
     def query_region(self, *, coordinate=None, where=None, mission=None,
                      dataset=None, table=None, columns=None, width=None,
-                     height=None, intersect='OVERLAPS', most_centered=False):
+                     height=None, intersect='OVERLAPS', most_centered=False,
+                     get_query_payload=False):
         """
         For certain missions, this function can be used to search for image and
         catalog files based on a point, a box (bounded by great circles) and/or
@@ -90,16 +91,24 @@ class IbeClass(BaseQuery):
             point, this is equivalent to ``'CENTER'`` and ``'COVERS'``.
         most_centered : bool
             If True, then only the most centered image is returned.
+        get_query_payload : bool, optional
+            If `True` then returns the dictionary of query parameters that would
+            be sent to the server. Defaults to `False`.
 
         Returns
         -------
-        table : `~astropy.table.Table`
-            A table containing the results of the query
+        table : `~astropy.table.Table` or dict
+            A table containing the results of the query, or if
+            ``get_query_payload=True``, the dictionary of query parameters.
         """
         response = self.query_region_async(
             coordinate=coordinate, where=where, mission=mission,
             dataset=dataset, table=table, columns=columns, width=width,
-            height=height, intersect=intersect, most_centered=most_centered)
+            height=height, intersect=intersect, most_centered=most_centered,
+            get_query_payload=get_query_payload)
+
+        if get_query_payload:
+            return response
 
         # Raise exception, if request failed
         response.raise_for_status()
@@ -109,16 +118,31 @@ class IbeClass(BaseQuery):
     def query_region_sia(self, *, coordinate=None, mission=None,
                          dataset=None, table=None, width=None,
                          height=None, intersect='OVERLAPS',
-                         most_centered=False):
+                         most_centered=False, get_query_payload=False):
         """
         Query using simple image access protocol.  See ``query_region`` for
         details.  The returned table will include a list of URLs.
+
+        Parameters
+        ----------
+        get_query_payload : bool, optional
+            If `True` then returns the dictionary of query parameters that would
+            be sent to the server. Defaults to `False`.
+
+        Returns
+        -------
+        table : `~astropy.table.Table` or dict
+            A table containing the results of the query, or if
+            ``get_query_payload=True``, the dictionary of query parameters.
         """
         response = self.query_region_async(
             coordinate=coordinate, mission=mission,
             dataset=dataset, table=table, width=width,
             height=height, intersect=intersect, most_centered=most_centered,
-            action='sia')
+            action='sia', get_query_payload=get_query_payload)
+
+        if get_query_payload:
+            return response
 
         # Raise exception, if request failed
         response.raise_for_status()
@@ -128,7 +152,8 @@ class IbeClass(BaseQuery):
 
     def query_region_async(self, *, coordinate=None, where=None, mission=None, dataset=None,
                            table=None, columns=None, width=None, height=None,
-                           action='search', intersect='OVERLAPS', most_centered=False):
+                           action='search', intersect='OVERLAPS', most_centered=False,
+                           get_query_payload=False):
         """
         For certain missions, this function can be used to search for image and
         catalog files based on a point, a box (bounded by great circles) and/or
@@ -191,11 +216,15 @@ class IbeClass(BaseQuery):
             which returns a table of the available data.  ``'data'`` requires
             advanced path construction that is not yet supported. ``'sia'``
             provides access to the 'simple image access' IVOA protocol
+        get_query_payload : bool, optional
+            If `True` then returns the dictionary of query parameters that would
+            be sent to the server. Defaults to `False`.
 
         Returns
         -------
-        response : `~requests.Response`
-            The HTTP response returned from the service
+        response : `~requests.Response` or dict
+            The HTTP response returned from the service, or if
+            ``get_query_payload=True``, the dictionary of query parameters.
         """
 
         if coordinate is None and where is None:
@@ -248,6 +277,9 @@ class IbeClass(BaseQuery):
             mission=mission or self.MISSION,
             dataset=dataset or self.DATASET,
             table=table or self.TABLE)
+
+        if get_query_payload:
+            return args
 
         return self._request('GET', url, args, timeout=self.TIMEOUT)
 

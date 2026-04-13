@@ -98,3 +98,13 @@ def test_ibe_field_id(patch_get):
 def test_deprecated_namespace_import_warning():
     with pytest.warns(DeprecationWarning):
         import astroquery.ibe  # noqa: F401
+
+
+def test_query_region_async_get_query_payload():
+    payload = Ibe.query_region_async(
+        coordinate=SkyCoord(148.969687 * u.deg, 69.679383 * u.deg),
+        get_query_payload=True)
+    assert 'POS' in payload
+    assert 'INTERSECT' in payload
+    assert payload['INTERSECT'] == "OVERLAPS"
+    assert payload['POS'] == '148.969687,69.679383'
